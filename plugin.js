@@ -84,6 +84,7 @@ function item(m, type, rank) {
   if (/^\d{4}$/.test(year)) out.year = year;
   if (m.poster_path) out.poster = IMG + m.poster_path;
   if (m.backdrop_path) out.backdrop = BACKDROP + m.backdrop_path;
+  if (m.overview) out.overview = String(m.overview);
   if (m.vote_average > 0) out.rating = Math.round(m.vote_average * 10) / 10;
   if (rank) out.badges = ["#" + rank];
   return out;
@@ -136,7 +137,12 @@ async function tagRow(row) {
     row.items.map(async (it) => {
       const type = it.kind === "series" ? "tv" : "movie";
       const names = await platformsOf(type, it.ids.tmdb);
-      if (names.length) it.badges = names.slice(0, 2).concat(it.badges || []);
+      // "Sin dato" es temporal: sirve para saber si la consulta de plataformas falla.
+      it.badges = (names.length ? names.slice(0, 2) : ["Sin dato"]).concat(it.badges || []);
+      if (names.length) {
+        const label = (english() ? "Streaming on: " : "Disponible en: ") + names.join(", ");
+        it.overview = label + (it.overview ? "\n\n" + it.overview : "");
+      }
     })
   );
   return row;
@@ -191,7 +197,11 @@ async function platformRow(p, type, ids) {
   });
   const label = type === "movie" ? (english() ? "movies" : "películas") : "series";
   const items = toItems(r.results, () => type);
-  for (const it of items) it.badges = [p.name].concat(it.badges || []);
+  for (const it of items) {
+    it.badges = [p.name].concat(it.badges || []);
+    const label = (english() ? "Streaming on: " : "Disponible en: ") + p.name;
+    it.overview = label + (it.overview ? "\n\n" + it.overview : "");
+  }
   return {
     id: p.id + "-" + type,
     title: p.name + " · Top " + PER_ROW + " " + label,
@@ -212,12 +222,12 @@ async function trendingRows() {
   const rows = [
     {
       id: "tendencias-movie",
-      title: english() ? "Most watched movies" : "Películas más vistas",
+      title: english() ? "Most watched movies today" : "Películas más vistas hoy",
       items: toItems(results, (m) => (m.media_type === "movie" ? "movie" : null)),
     },
     {
       id: "tendencias-tv",
-      title: english() ? "Most watched series" : "Series más vistas",
+      title: english() ? "Most watched series today" : "Series más vistas hoy",
       items: toItems(results, (m) => (m.media_type === "tv" ? "tv" : null)),
     },
   ];
