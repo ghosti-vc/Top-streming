@@ -7,7 +7,7 @@
   "description": "Lo más visto de Netflix, HBO Max, Disney+, Prime Video y más: películas y series por país. Solo muestra el catálogo, no reproduce videos.",
   "author": "Ghosti-vc",
   "homepage": "https://github.com/Ghosti-vc/top-streming",
-  "icon": "icon.png",
+  "icon": "img.png",
   "hosts": [
     "api.themoviedb.org",
     "image.tmdb.org"
