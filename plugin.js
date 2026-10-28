@@ -163,6 +163,8 @@ async function tagRow(row) {
       }
     })
   );
+  const first = row.items[0];
+  if (first) dbg("ej. " + first.title + " -> " + (first.badges || []).join(", "));
   return row;
 }
 
@@ -283,7 +285,7 @@ async function build() {
   if (DEBUG.length) {
     good.push({
       id: "diagnostico",
-      title: "Diagnóstico (temporal)",
+      title: "Diagnóstico v4 (temporal)",
       items: [].concat(
         ...DEBUG.map((t, i) => {
           const parts = String(t).match(/.{1,32}/g) || [String(t)];
