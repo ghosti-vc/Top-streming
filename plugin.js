@@ -24,12 +24,12 @@ const PLATFORMS = [
 
 const english = () => kino.lang === "en-US";
 const tmdbLang = () => (english() ? "en-US" : "es-MX");
-const region = () => String(kino.config.get("region") || "CO");
+const region = () => String(kino.config.get("region") || "CO").trim().toUpperCase();
 
 // Diagnóstico temporal: guarda los errores para mostrarlos como una fila al final del inicio.
 const DEBUG = [];
 function dbg(tag, e) {
-  const msg = e ? tag + ": " + ((e && e.code) || "error") + " " + String((e && e.message) || "").slice(0, 70) : tag;
+  const msg = e ? tag + ": " + ((e && e.code) || "error") + " " + String((e && e.message) || "").slice(0, 110) : tag;
   if (!DEBUG.includes(msg) && DEBUG.length < 6) DEBUG.push(msg);
 }
 
@@ -117,7 +117,9 @@ async function platformsOf(type, id) {
   let flat = null;
   try {
     const r = await tmdb("/" + type + "/" + id + "/watch/providers", {});
-    flat = (((r && r.results) || {})[region()] || {}).flatrate || [];
+    const res = (r && r.results) || {};
+    if (!res[region()]) dbg("sin region " + region() + "; hay: " + Object.keys(res).slice(0, 8).join(","));
+    flat = (res[region()] || {}).flatrate || [];
   } catch (e) {
     try {
       // ruta alterna: pedir las plataformas junto con los datos del título
@@ -136,7 +138,13 @@ async function platformsOf(type, id) {
     const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
     if (p && !names.includes(p.name)) names.push(p.name);
   }
-  if (!names.length) dbg("sin plataforma conocida en region " + region() + " (" + flat.length + " listadas)");
+  if (!names.length) {
+    dbg(
+      flat.length
+        ? "no coincide: " + flat.map((x) => x.provider_name).slice(0, 6).join(", ")
+        : "region " + region() + ": sin streaming"
+    );
+  }
   kino.storage.set(key, JSON.stringify(names), { ttlMs: PROVIDERS_MS });
   return names;
 }
@@ -276,13 +284,18 @@ async function build() {
     good.push({
       id: "diagnostico",
       title: "Diagnóstico (temporal)",
-      items: DEBUG.map((t, i) => ({
-        id: "dbg-" + i,
-        ref: JSON.stringify({ kind: "movie", id: 0 }),
-        title: t,
-        kind: "movie",
-        ids: {},
-      })),
+      items: [].concat(
+        ...DEBUG.map((t, i) => {
+          const parts = String(t).match(/.{1,32}/g) || [String(t)];
+          return parts.map((part, j) => ({
+            id: "dbg-" + i + "-" + j,
+            ref: JSON.stringify({ kind: "movie", id: 0 }),
+            title: (j === 0 ? i + 1 + ") " : "   ") + part,
+            kind: "movie",
+            ids: {},
+          }));
+        })
+      ),
     });
   }
   return good;
