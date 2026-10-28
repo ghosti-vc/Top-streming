@@ -119,16 +119,28 @@ async function platformRow(p, type, ids) {
   };
 }
 
-async function trendingRow(type) {
-  const r = await tmdb("/trending/" + type + "/day", { language: tmdbLang() });
-  const movie = type === "movie";
-  return {
-    id: "tendencias-" + type,
-    title: movie
-      ? (english() ? "Most watched movies" : "Películas más vistas")
-      : (english() ? "Most watched series" : "Series más vistas"),
-    items: toItems(r.results, () => type),
-  };
+// Usa la misma ruta que ya funcionaba (/trending/all/day) y la separa en dos filas.
+async function trendingRows() {
+  const pages = await Promise.all(
+    ["1", "2"].map((page) =>
+      tmdb("/trending/all/day", { language: tmdbLang(), page }).catch(() => null)
+    )
+  );
+  const results = [];
+  for (const r of pages) if (r && r.results) results.push(...r.results);
+  if (!results.length) throw kino.error("unavailable", "TMDB no devolvió tendencias");
+  return [
+    {
+      id: "tendencias-movie",
+      title: english() ? "Most watched movies" : "Películas más vistas",
+      items: toItems(results, (m) => (m.media_type === "movie" ? "movie" : null)),
+    },
+    {
+      id: "tendencias-tv",
+      title: english() ? "Most watched series" : "Series más vistas",
+      items: toItems(results, (m) => (m.media_type === "tv" ? "tv" : null)),
+    },
+  ];
 }
 
 async function build() {
@@ -137,7 +149,7 @@ async function build() {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  const jobs = [trendingRow("movie"), trendingRow("tv")];
+  const jobs = [trendingRows()];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
@@ -153,7 +165,7 @@ async function build() {
       })
     )
   );
-  const good = rows.filter((r) => r && r.items.length);
+  const good = [].concat(...rows.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
   if (!good.length && firstError) throw firstError;
   return good;
 }
