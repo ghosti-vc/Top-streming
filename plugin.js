@@ -109,62 +109,70 @@ function toItems(results, typeOf) {
   return items;
 }
 
-// En qué plataformas (de la lista PLATFORMS) está un título en tu país. Se guarda un día.
+// Nombres (de la lista PLATFORMS) que aparecen en una lista "flatrate" de TMDB.
+function matchNames(flat) {
+  const names = [];
+  for (const x of flat || []) {
+    const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
+    if (p && !names.includes(p.name)) names.push(p.name);
+  }
+  return names;
+}
+
+// En qué plataformas está un título. Primero en tu país; si TMDB no tiene datos de tu país,
+// se busca en otros países y se anota el país entre paréntesis, por ejemplo "Netflix (US)".
 async function platformsOf(type, id) {
-  const key = "wp:" + region() + ":" + type + ":" + id;
+  const key = "wp2:" + region() + ":" + type + ":" + id;
   const saved = await readJSON(key);
   if (saved) return saved;
-  let flat = null;
+  let res = null;
   try {
     const r = await tmdb("/" + type + "/" + id + "/watch/providers", {});
-    const res = (r && r.results) || {};
-    if (!res[region()]) dbg("sin region " + region() + "; hay: " + Object.keys(res).slice(0, 8).join(","));
-    flat = (res[region()] || {}).flatrate || [];
+    res = (r && r.results) || {};
   } catch (e) {
     try {
       // ruta alterna: pedir las plataformas junto con los datos del título
       const r = await tmdb("/" + type + "/" + id, { append_to_response: "watch/providers", language: tmdbLang() });
-      const wp = (r && r["watch/providers"] && r["watch/providers"].results) || {};
-      flat = (wp[region()] || {}).flatrate || [];
+      res = (r && r["watch/providers"] && r["watch/providers"].results) || {};
     } catch (e2) {
       kino.log("top-streming: sin plataformas", (e2 && e2.code) || "error");
-      dbg("plataformas(1)", e);
-      dbg("plataformas(2)", e2);
-      return []; // si falla, la carátula sale sin etiqueta de plataforma
+      dbg("plataformas", e2);
+      return []; // si falla, no se guarda y el título sale sin plataforma
     }
   }
-  const names = [];
-  for (const x of flat) {
-    const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
-    if (p && !names.includes(p.name)) names.push(p.name);
-  }
+  let names = matchNames((res[region()] || {}).flatrate);
   if (!names.length) {
-    dbg(
-      flat.length
-        ? "no coincide: " + flat.map((x) => x.provider_name).slice(0, 6).join(", ")
-        : "region " + region() + ": sin streaming"
-    );
+    const order = ["US", "MX", "ES", "AR", "GB"].concat(Object.keys(res));
+    for (const code of order) {
+      if (code === region() || !res[code]) continue;
+      const alt = matchNames(res[code].flatrate).map((n) => n + " (" + code + ")");
+      if (alt.length) {
+        names = alt.slice(0, 2);
+        break;
+      }
+    }
   }
   kino.storage.set(key, JSON.stringify(names), { ttlMs: PROVIDERS_MS });
   return names;
 }
 
-// Añade a cada carátula el nombre de la plataforma (máximo 2) junto al número del ranking.
+// Pone la plataforma al inicio de la descripción de cada título.
 async function tagRow(row) {
   await Promise.all(
     row.items.map(async (it) => {
       const type = it.kind === "series" ? "tv" : "movie";
       const names = await platformsOf(type, it.ids.tmdb);
-      // "Sin dato" es temporal: sirve para saber si la consulta de plataformas falla.
-      it.badges = (names.length ? names.slice(0, 2) : ["Sin dato"]).concat(it.badges || []);
-      if (names.length) {
-        const label = (english() ? "Streaming on: " : "Disponible en: ") + names.join(", ");
-        it.overview = label + (it.overview ? "\n\n" + it.overview : "");
+      let label;
+      if (!names.length) {
+        label = english() ? "No streaming info for your country." : "Sin información de streaming en tu país.";
+      } else if (names.every((n) => /\([A-Z]{2}\)$/.test(n))) {
+        label = (english() ? "Not streaming in your country. Available in: " : "No está en streaming en tu país. Disponible en: ") + names.join(", ");
+      } else {
+        label = (english() ? "Streaming on: " : "Disponible en: ") + names.join(", ");
       }
+      it.overview = label + (it.overview ? "\n\n" + it.overview : "");
     })
   );
-  const first = row.items[0];
-  if (first) dbg("ej. " + first.title + " -> " + (first.badges || []).join(", "));
   return row;
 }
 
@@ -260,7 +268,6 @@ async function build() {
   DEBUG.length = 0;
   const ids = await providerIds().catch((e) => {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
-    dbg("ids de plataformas", e);
     return {};
   });
   const jobs = [trendingRows(), kdramaRow()];
