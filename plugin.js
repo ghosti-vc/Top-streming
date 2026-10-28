@@ -1,4 +1,4 @@
-// Top Streming: lo más visto de las plataformas de streaming, por país.
+// Top Streaming: lo más visto de las plataformas de streaming, por país.
 // Los datos salen de TMDB a través de kino.tmdb (sin ninguna llave en el código):
 // se ordena por popularidad (vistas en TMDB) entre los títulos que cada plataforma ofrece en tu país.
 
@@ -135,7 +135,7 @@ async function platformsOf(type, id) {
       const r = await tmdb("/" + type + "/" + id, { append_to_response: "watch/providers", language: tmdbLang() });
       res = (r && r["watch/providers"] && r["watch/providers"].results) || {};
     } catch (e2) {
-      kino.log("top-streming: sin plataformas", (e2 && e2.code) || "error");
+      kino.log("top-streaming: sin plataformas", (e2 && e2.code) || "error");
       dbg("plataformas", e2);
       return []; // si falla, no se guarda y el título sale sin plataforma
     }
@@ -192,7 +192,7 @@ async function kdramaRow() {
     });
     results = r.results || [];
   } catch (e) {
-    kino.log("top-streming: discover de K-dramas falló", (e && e.code) || "error");
+    kino.log("top-streaming: discover de K-dramas falló", (e && e.code) || "error");
   }
   if (!results.length) {
     const pages = await Promise.all(
@@ -222,7 +222,7 @@ async function estrenosRow() {
     const r = await tmdb("/movie/now_playing", { language, region: region(), page: "1" });
     results = (r.results || []).filter((m) => !m.release_date || m.release_date <= today);
   } catch (e) {
-    kino.log("top-streming: now_playing falló", (e && e.code) || "error");
+    kino.log("top-streaming: now_playing falló", (e && e.code) || "error");
   }
   if (!results.length) {
     const from = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -335,7 +335,7 @@ async function build() {
   // Si fallan los ids de plataforma, igual se muestra la fila de tendencias.
   DEBUG.length = 0;
   const ids = await providerIds().catch((e) => {
-    kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
+    kino.log("top-streaming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
   const jobs = [trendingRows(), estrenosRow(), netflixNewRow(), kdramaRow()];
@@ -349,7 +349,7 @@ async function build() {
     jobs.map((job) =>
       job.catch((e) => {
         if (!firstError) firstError = e;
-        kino.log("top-streming: una fila falló", (e && e.code) || "error");
+        kino.log("top-streaming: una fila falló", (e && e.code) || "error");
         dbg("fila", e);
         return null;
       })
@@ -376,7 +376,7 @@ export async function home() {
     return rows;
   } catch (e) {
     if (e && e.code === "no_tmdb_key") return [];
-    kino.log("top-streming: home falló", (e && e.code) || String(e));
+    kino.log("top-streaming: home falló", (e && e.code) || String(e));
     const last = await readJSON("last:" + scope);
     if (last) return last;
     throw e;
