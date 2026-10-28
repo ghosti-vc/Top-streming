@@ -119,12 +119,15 @@ async function platformRow(p, type, ids) {
   };
 }
 
-async function trendingRow() {
-  const r = await tmdb("/trending/all/day", { language: tmdbLang() });
+async function trendingRow(type) {
+  const r = await tmdb("/trending/" + type + "/day", { language: tmdbLang() });
+  const movie = type === "movie";
   return {
-    id: "tendencias",
-    title: english() ? "Trending today" : "Lo más visto hoy",
-    items: toItems(r.results, (m) => m.media_type),
+    id: "tendencias-" + type,
+    title: movie
+      ? (english() ? "Most watched movies" : "Películas más vistas")
+      : (english() ? "Most watched series" : "Series más vistas"),
+    items: toItems(r.results, () => type),
   };
 }
 
@@ -134,7 +137,7 @@ async function build() {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  const jobs = [trendingRow()];
+  const jobs = [trendingRow("movie"), trendingRow("tv")];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
