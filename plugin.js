@@ -24,7 +24,7 @@ const PLATFORMS = [
 
 const english = () => kino.lang === "en-US";
 const tmdbLang = () => (english() ? "en-US" : "es-MX");
-const region = () => String(kino.config.get("region") || "CO").trim().toUpperCase();
+const region = () => String(kino.config.get("region") || "MX").trim().toUpperCase();
 
 // Diagnóstico temporal: guarda los errores para mostrarlos como una fila al final del inicio.
 const DEBUG = [];
