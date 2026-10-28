@@ -26,6 +26,13 @@ const english = () => kino.lang === "en-US";
 const tmdbLang = () => (english() ? "en-US" : "es-MX");
 const region = () => String(kino.config.get("region") || "CO");
 
+// Diagnóstico temporal: guarda los errores para mostrarlos como una fila al final del inicio.
+const DEBUG = [];
+function dbg(tag, e) {
+  const msg = e ? tag + ": " + ((e && e.code) || "error") + " " + String((e && e.message) || "").slice(0, 70) : tag;
+  if (!DEBUG.includes(msg) && DEBUG.length < 6) DEBUG.push(msg);
+}
+
 async function tmdb(path, params) {
   await null; // primero await, luego validar (Kino 0.9.49 y anteriores)
   if (typeof kino.tmdb !== "function") {
@@ -119,6 +126,8 @@ async function platformsOf(type, id) {
       flat = (wp[region()] || {}).flatrate || [];
     } catch (e2) {
       kino.log("top-streming: sin plataformas", (e2 && e2.code) || "error");
+      dbg("plataformas(1)", e);
+      dbg("plataformas(2)", e2);
       return []; // si falla, la carátula sale sin etiqueta de plataforma
     }
   }
@@ -127,6 +136,7 @@ async function platformsOf(type, id) {
     const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
     if (p && !names.includes(p.name)) names.push(p.name);
   }
+  if (!names.length) dbg("sin plataforma conocida en region " + region() + " (" + flat.length + " listadas)");
   kino.storage.set(key, JSON.stringify(names), { ttlMs: PROVIDERS_MS });
   return names;
 }
@@ -237,8 +247,10 @@ async function trendingRows() {
 
 async function build() {
   // Si fallan los ids de plataforma, igual se muestra la fila de tendencias.
+  DEBUG.length = 0;
   const ids = await providerIds().catch((e) => {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
+    dbg("ids de plataformas", e);
     return {};
   });
   const jobs = [trendingRows(), kdramaRow()];
@@ -253,12 +265,26 @@ async function build() {
       job.catch((e) => {
         if (!firstError) firstError = e;
         kino.log("top-streming: una fila falló", (e && e.code) || "error");
+        dbg("fila", e);
         return null;
       })
     )
   );
   const good = [].concat(...rows.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
   if (!good.length && firstError) throw firstError;
+  if (DEBUG.length) {
+    good.push({
+      id: "diagnostico",
+      title: "Diagnóstico (temporal)",
+      items: DEBUG.map((t, i) => ({
+        id: "dbg-" + i,
+        ref: JSON.stringify({ kind: "movie", id: 0 }),
+        title: t,
+        kind: "movie",
+        ids: {},
+      })),
+    });
+  }
   return good;
 }
 
