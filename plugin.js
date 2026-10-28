@@ -8,7 +8,7 @@ const STILL = "https://image.tmdb.org/t/p/w300";
 
 const CACHE_MS = 60 * 1000; // el ranking se vuelve a pedir si pasó más de un minuto
 const PROVIDERS_MS = 24 * 60 * 60 * 1000; // los ids de plataforma casi no cambian
-const PER_ROW = 10;
+const PER_ROW = 15;
 const MAX_SEASONS = 10;
 
 // Cada plataforma se reconoce por el nombre que le da TMDB en tu país.
@@ -206,7 +206,7 @@ async function kdramaRow() {
   }
   const row = {
     id: "kdramas",
-    title: english() ? "Top 10 K-dramas" : "Top 10 K-dramas",
+    title: "Top " + PER_ROW + " K-dramas",
     items: toItems(results, () => "tv"),
   };
   if (!row.items.length) throw kino.error("unavailable", "no hay K-dramas");
@@ -273,7 +273,7 @@ async function platformRow(p, type, ids) {
 // Usa la misma ruta que ya funcionaba (/trending/all/day) y la separa en dos filas.
 async function trendingRows() {
   const pages = await Promise.all(
-    ["1", "2"].map((page) =>
+    ["1", "2", "3"].map((page) =>
       tmdb("/trending/all/day", { language: tmdbLang(), page }).catch(() => null)
     )
   );
