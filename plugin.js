@@ -101,6 +101,38 @@ function toItems(results, typeOf) {
   return items;
 }
 
+// En qué plataformas (de la lista PLATFORMS) está un título en tu país. Se guarda un día.
+async function platformsOf(type, id) {
+  const key = "wp:" + region() + ":" + type + ":" + id;
+  const saved = await readJSON(key);
+  if (saved) return saved;
+  try {
+    const r = await tmdb("/" + type + "/" + id + "/watch/providers", {});
+    const flat = (((r && r.results) || {})[region()] || {}).flatrate || [];
+    const names = [];
+    for (const x of flat) {
+      const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
+      if (p && !names.includes(p.name)) names.push(p.name);
+    }
+    kino.storage.set(key, JSON.stringify(names), { ttlMs: PROVIDERS_MS });
+    return names;
+  } catch (e) {
+    return []; // si falla, la carátula sale sin etiqueta de plataforma
+  }
+}
+
+// Añade a cada carátula el nombre de la plataforma (máximo 2) junto al número del ranking.
+async function tagRow(row) {
+  await Promise.all(
+    row.items.map(async (it) => {
+      const type = it.kind === "series" ? "tv" : "movie";
+      const names = await platformsOf(type, it.ids.tmdb);
+      if (names.length) it.badges = (it.badges || []).concat(names.slice(0, 2));
+    })
+  );
+  return row;
+}
+
 async function platformRow(p, type, ids) {
   const r = await tmdb("/discover/" + type, {
     watch_region: region(),
@@ -112,10 +144,12 @@ async function platformRow(p, type, ids) {
     page: "1",
   });
   const label = type === "movie" ? (english() ? "movies" : "películas") : "series";
+  const items = toItems(r.results, () => type);
+  for (const it of items) it.badges = (it.badges || []).concat(p.name);
   return {
     id: p.id + "-" + type,
     title: p.name + " · Top " + PER_ROW + " " + label,
-    items: toItems(r.results, () => type),
+    items,
   };
 }
 
@@ -129,7 +163,7 @@ async function trendingRows() {
   const results = [];
   for (const r of pages) if (r && r.results) results.push(...r.results);
   if (!results.length) throw kino.error("unavailable", "TMDB no devolvió tendencias");
-  return [
+  const rows = [
     {
       id: "tendencias-movie",
       title: english() ? "Most watched movies" : "Películas más vistas",
@@ -141,6 +175,8 @@ async function trendingRows() {
       items: toItems(results, (m) => (m.media_type === "tv" ? "tv" : null)),
     },
   ];
+  await Promise.all(rows.map(tagRow));
+  return rows;
 }
 
 async function build() {
