@@ -106,19 +106,28 @@ async function platformsOf(type, id) {
   const key = "wp:" + region() + ":" + type + ":" + id;
   const saved = await readJSON(key);
   if (saved) return saved;
+  let flat = null;
   try {
     const r = await tmdb("/" + type + "/" + id + "/watch/providers", {});
-    const flat = (((r && r.results) || {})[region()] || {}).flatrate || [];
-    const names = [];
-    for (const x of flat) {
-      const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
-      if (p && !names.includes(p.name)) names.push(p.name);
-    }
-    kino.storage.set(key, JSON.stringify(names), { ttlMs: PROVIDERS_MS });
-    return names;
+    flat = (((r && r.results) || {})[region()] || {}).flatrate || [];
   } catch (e) {
-    return []; // si falla, la carátula sale sin etiqueta de plataforma
+    try {
+      // ruta alterna: pedir las plataformas junto con los datos del título
+      const r = await tmdb("/" + type + "/" + id, { append_to_response: "watch/providers", language: tmdbLang() });
+      const wp = (r && r["watch/providers"] && r["watch/providers"].results) || {};
+      flat = (wp[region()] || {}).flatrate || [];
+    } catch (e2) {
+      kino.log("top-streming: sin plataformas", (e2 && e2.code) || "error");
+      return []; // si falla, la carátula sale sin etiqueta de plataforma
+    }
   }
+  const names = [];
+  for (const x of flat) {
+    const p = PLATFORMS.find((pl) => pl.match.test(String(x.provider_name || "").trim()));
+    if (p && !names.includes(p.name)) names.push(p.name);
+  }
+  kino.storage.set(key, JSON.stringify(names), { ttlMs: PROVIDERS_MS });
+  return names;
 }
 
 // Añade a cada carátula el nombre de la plataforma (máximo 2) junto al número del ranking.
@@ -127,10 +136,47 @@ async function tagRow(row) {
     row.items.map(async (it) => {
       const type = it.kind === "series" ? "tv" : "movie";
       const names = await platformsOf(type, it.ids.tmdb);
-      if (names.length) it.badges = (it.badges || []).concat(names.slice(0, 2));
+      if (names.length) it.badges = names.slice(0, 2).concat(it.badges || []);
     })
   );
   return row;
+}
+
+// Top 10 de K-dramas (series surcoreanas). Si "discover" no está disponible, se filtran las tendencias.
+async function kdramaRow() {
+  const language = tmdbLang();
+  let results = [];
+  try {
+    const r = await tmdb("/discover/tv", {
+      with_original_language: "ko",
+      with_origin_country: "KR",
+      with_genres: "18",
+      sort_by: "popularity.desc",
+      include_adult: "false",
+      language,
+      page: "1",
+    });
+    results = r.results || [];
+  } catch (e) {
+    kino.log("top-streming: discover de K-dramas falló", (e && e.code) || "error");
+  }
+  if (!results.length) {
+    const pages = await Promise.all(
+      ["1", "2", "3", "4", "5"].map((page) => tmdb("/trending/all/day", { language, page }).catch(() => null))
+    );
+    for (const r of pages) {
+      for (const m of (r && r.results) || []) {
+        if (m.media_type === "tv" && m.original_language === "ko") results.push(m);
+      }
+    }
+  }
+  const row = {
+    id: "kdramas",
+    title: english() ? "Top 10 K-dramas" : "Top 10 K-dramas",
+    items: toItems(results, () => "tv"),
+  };
+  if (!row.items.length) throw kino.error("unavailable", "no hay K-dramas");
+  return tagRow(row);
 }
 
 async function platformRow(p, type, ids) {
@@ -145,7 +191,7 @@ async function platformRow(p, type, ids) {
   });
   const label = type === "movie" ? (english() ? "movies" : "películas") : "series";
   const items = toItems(r.results, () => type);
-  for (const it of items) it.badges = (it.badges || []).concat(p.name);
+  for (const it of items) it.badges = [p.name].concat(it.badges || []);
   return {
     id: p.id + "-" + type,
     title: p.name + " · Top " + PER_ROW + " " + label,
@@ -185,7 +231,7 @@ async function build() {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  const jobs = [trendingRows()];
+  const jobs = [trendingRows(), kdramaRow()];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
