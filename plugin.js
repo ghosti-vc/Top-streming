@@ -246,6 +246,39 @@ async function estrenosRow() {
   return tagRow(row);
 }
 
+// Estrenos solo de Netflix: películas y series de los últimos 60 días que están en Netflix en tu país.
+const NETFLIX_ID = "8"; // id de Netflix en TMDB (no cambia)
+async function netflixNewRow() {
+  const language = tmdbLang();
+  const day = 24 * 60 * 60 * 1000;
+  const today = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - 60 * day).toISOString().slice(0, 10);
+  const base = {
+    watch_region: region(),
+    with_watch_providers: NETFLIX_ID,
+    with_watch_monetization_types: "flatrate",
+    sort_by: "popularity.desc",
+    include_adult: "false",
+    language,
+    page: "1",
+  };
+  const [movies, shows] = await Promise.all([
+    tmdb("/discover/movie", Object.assign({}, base, { "primary_release_date.gte": from, "primary_release_date.lte": today })).catch(() => null),
+    tmdb("/discover/tv", Object.assign({}, base, { "first_air_date.gte": from, "first_air_date.lte": today })).catch(() => null),
+  ]);
+  const results = [];
+  for (const m of (movies && movies.results) || []) results.push(Object.assign({ _type: "movie" }, m));
+  for (const m of (shows && shows.results) || []) results.push(Object.assign({ _type: "tv" }, m));
+  results.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  const items = toItems(results, (m) => m._type);
+  if (!items.length) throw kino.error("unavailable", "no hay estrenos de Netflix");
+  for (const it of items) {
+    const label = (english() ? "Streaming on: " : "Disponible en: ") + "Netflix";
+    it.overview = label + (it.overview ? "\n\n" + it.overview : "");
+  }
+  return { id: "netflix-estrenos", title: english() ? "New on Netflix" : "Estrenos en Netflix", items };
+}
+
 async function platformRow(p, type, ids) {
   const r = await tmdb("/discover/" + type, {
     watch_region: region(),
@@ -303,7 +336,7 @@ async function build() {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  const jobs = [trendingRows(), estrenosRow(), kdramaRow()];
+  const jobs = [trendingRows(), estrenosRow(), netflixNewRow(), kdramaRow()];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
