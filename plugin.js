@@ -36,11 +36,21 @@ async function tmdb(path, params) {
   return kino.tmdb(path, params || {});
 }
 
+// Lee y convierte a JSON lo guardado; si algo sale mal devuelve null (nunca rompe).
+async function readJSON(key) {
+  try {
+    const v = await kino.storage.get(key);
+    return v ? JSON.parse(v) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Ids de cada plataforma en el país elegido (guardados un día).
 async function providerIds() {
   const key = "providers:" + region();
-  const saved = kino.storage.get(key);
-  if (saved) return JSON.parse(saved);
+  const saved = await readJSON(key);
+  if (saved) return saved;
   const q = { watch_region: region(), language: tmdbLang() };
   const [movies, shows] = await Promise.all([
     tmdb("/watch/providers/movie", q),
@@ -101,7 +111,7 @@ async function platformRow(p, type, ids) {
     language: tmdbLang(),
     page: "1",
   });
-  const label = type === "movie" ? (english() ? "movies" : "películas") : english() ? "series" : "series";
+  const label = type === "movie" ? (english() ? "movies" : "películas") : "series";
   return {
     id: p.id + "-" + type,
     title: p.name + " · Top " + PER_ROW + " " + label,
@@ -119,7 +129,11 @@ async function trendingRow() {
 }
 
 async function build() {
-  const ids = await providerIds();
+  // Si fallan los ids de plataforma, igual se muestra la fila de tendencias.
+  const ids = await providerIds().catch((e) => {
+    kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
+    return {};
+  });
   const jobs = [trendingRow()];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
@@ -142,29 +156,26 @@ async function build() {
 }
 
 // Kino pide el Home al abrirse. Si pasó menos de un minuto desde la última vez, se devuelve lo guardado;
-// si pasó más, se vuelve a pedir el ranking a TMDB. Si TMDB falla, se muestra la última copia buena.
+// si pasó más, se vuelve a pedir el ranking a TMDB. Si algo falla, se muestra la última copia buena.
 export async function home() {
   await null;
   const scope = region() + ":" + kino.lang;
-  const cached = kino.storage.get("home:" + scope);
-  if (cached) return JSON.parse(cached);
-  let rows;
+  const cached = await readJSON("home:" + scope);
+  if (cached) return cached;
   try {
-    rows = await build();
+    const rows = await build();
+    if (!rows.length) throw kino.error("unavailable", "TMDB no devolvió títulos");
+    const text = JSON.stringify(rows);
+    kino.storage.set("home:" + scope, text, { ttlMs: CACHE_MS });
+    kino.storage.set("last:" + scope, text);
+    return rows;
   } catch (e) {
     if (e && e.code === "no_tmdb_key") return [];
-    const last = kino.storage.get("last:" + scope);
-    if (last && ["unavailable", "network", "timeout", "rate_limited"].includes(e && e.code)) {
-      kino.log("top-streming: se muestra la última copia", e.code);
-      return JSON.parse(last);
-    }
+    kino.log("top-streming: home falló", (e && e.code) || String(e));
+    const last = await readJSON("last:" + scope);
+    if (last) return last;
     throw e;
   }
-  if (!rows.length) throw kino.error("unavailable", "TMDB no devolvió títulos");
-  const text = JSON.stringify(rows);
-  kino.storage.set("home:" + scope, text, { ttlMs: CACHE_MS });
-  kino.storage.set("last:" + scope, text);
-  return rows;
 }
 
 // Las series necesitan "episodes" para que Kino no las descarte; se arma con las temporadas de TMDB.
