@@ -1,6 +1,6 @@
 {
   "id": "top-streming",
-  "name": "Top Streming",
+  "name": "Top Streaming",
   "version": "1.0.0",
   "apiVersion": 1,
   "entry": "plugin.js",
@@ -23,15 +23,15 @@
       "key": "region",
       "label": "País",
       "type": "select",
-      "default": "CO",
+      "default": "MX",
       "options": [
-        {
-          "value": "CO",
-          "label": "Colombia"
-        },
         {
           "value": "MX",
           "label": "México"
+        },
+        {
+          "value": "CO",
+          "label": "Colombia"
         },
         {
           "value": "AR",
@@ -64,4 +64,4 @@
       ]
     }
   ]
-} 
+}
