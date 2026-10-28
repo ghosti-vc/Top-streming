@@ -213,6 +213,39 @@ async function kdramaRow() {
   return tagRow(row);
 }
 
+// Estrenos: películas que están en cines ahora en tu país (si falla, las más populares de los últimos 45 días).
+async function estrenosRow() {
+  const language = tmdbLang();
+  const today = new Date().toISOString().slice(0, 10);
+  let results = [];
+  try {
+    const r = await tmdb("/movie/now_playing", { language, region: region(), page: "1" });
+    results = (r.results || []).filter((m) => !m.release_date || m.release_date <= today);
+  } catch (e) {
+    kino.log("top-streming: now_playing falló", (e && e.code) || "error");
+  }
+  if (!results.length) {
+    const from = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const r = await tmdb("/discover/movie", {
+      "primary_release_date.gte": from,
+      "primary_release_date.lte": today,
+      sort_by: "popularity.desc",
+      include_adult: "false",
+      language,
+      page: "1",
+    });
+    results = r.results || [];
+  }
+  results.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  const row = {
+    id: "estrenos",
+    title: english() ? "New releases" : "Estrenos",
+    items: toItems(results, () => "movie"),
+  };
+  if (!row.items.length) throw kino.error("unavailable", "no hay estrenos");
+  return tagRow(row);
+}
+
 async function platformRow(p, type, ids) {
   const r = await tmdb("/discover/" + type, {
     watch_region: region(),
@@ -270,7 +303,7 @@ async function build() {
     kino.log("top-streming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  const jobs = [trendingRows(), kdramaRow()];
+  const jobs = [trendingRows(), estrenosRow(), kdramaRow()];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
