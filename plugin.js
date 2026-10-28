@@ -289,24 +289,6 @@ async function build() {
   );
   const good = [].concat(...rows.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
   if (!good.length && firstError) throw firstError;
-  if (DEBUG.length) {
-    good.push({
-      id: "diagnostico",
-      title: "Diagnóstico v4 (temporal)",
-      items: [].concat(
-        ...DEBUG.map((t, i) => {
-          const parts = String(t).match(/.{1,32}/g) || [String(t)];
-          return parts.map((part, j) => ({
-            id: "dbg-" + i + "-" + j,
-            ref: JSON.stringify({ kind: "movie", id: 0 }),
-            title: (j === 0 ? i + 1 + ") " : "   ") + part,
-            kind: "movie",
-            ids: {},
-          }));
-        })
-      ),
-    });
-  }
   return good;
 }
 
