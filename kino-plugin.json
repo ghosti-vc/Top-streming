@@ -1,7 +1,7 @@
 {
   "id": "top-streming",
   "name": "Top Streaming",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "apiVersion": 1,
   "entry": "plugin.js",
   "description": "Lo más visto de Netflix, HBO Max, Disney+, Prime Video y más: películas y series por país. Solo muestra el catálogo, no reproduce videos.",
