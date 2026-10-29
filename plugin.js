@@ -287,8 +287,7 @@ async function netflixNewRow() {
   return rows;
 }
 
-// Estrenos (últimos 60 días) de HBO, Prime Video, Disney y Apple TV: una fila por plataforma
-// con películas y series juntas (la etiqueta de cada título dice si es película o serie).
+// Estrenos (últimos 60 días) de HBO, Prime Video, Disney y Apple TV: dos filas por plataforma (películas y series).
 const NEW_ON = ["hbo", "prime", "disney", "apple"];
 async function newRows(p, ids) {
   const language = tmdbLang();
@@ -308,20 +307,19 @@ async function newRows(p, ids) {
     tmdb("/discover/movie", Object.assign({}, base, { "primary_release_date.gte": from, "primary_release_date.lte": today })).catch(() => null),
     tmdb("/discover/tv", Object.assign({}, base, { "first_air_date.gte": from, "first_air_date.lte": today })).catch(() => null),
   ]);
-  const mixed = []
-    .concat(
-      ((movies && movies.results) || []).map((m) => Object.assign({ _type: "movie" }, m)),
-      ((shows && shows.results) || []).map((m) => Object.assign({ _type: "tv" }, m))
-    )
-    .sort((x, y) => (y.popularity || 0) - (x.popularity || 0));
-  const items = toItems(mixed, (m) => m._type);
   const label = (english() ? "Streaming on: " : "Disponible en: ") + p.name;
-  for (const it of items) {
-    it.badges = [it.kind === "series" ? (english() ? "Series" : "Serie") : (english() ? "Movie" : "Película")];
-    it.overview = label + (it.overview ? "\n\n" + it.overview : "");
-  }
-  if (!items.length) throw kino.error("unavailable", "no hay estrenos de " + p.name);
-  return { id: p.id + "-estrenos", title: english() ? "New on " + p.name : "Estrenos en " + p.name, items };
+  const make = (list, type, id, title) => {
+    const sorted = (list || []).slice().sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    const items = toItems(sorted, () => type);
+    for (const it of items) it.overview = label + (it.overview ? "\n\n" + it.overview : "");
+    return { id, title, items };
+  };
+  const rows = [
+    make(movies && movies.results, "movie", p.id + "-estrenos-movie", english() ? "New on " + p.name + " · Movies" : "Estrenos en " + p.name + " · Películas"),
+    make(shows && shows.results, "tv", p.id + "-estrenos-tv", english() ? "New on " + p.name + " · Series" : "Estrenos en " + p.name + " · Series"),
+  ].filter((r) => r.items.length);
+  if (!rows.length) throw kino.error("unavailable", "no hay estrenos de " + p.name);
+  return rows;
 }
 
 async function platformRow(p, type, ids) {
@@ -374,11 +372,6 @@ async function trendingRows() {
   return rows;
 }
 
-// Kino solo acepta 20 filas en el Inicio y 60 peticiones por llamada, por eso no caben todas las plataformas:
-// aquí se eligen las que tienen fila de "Top". Para cambiarlas, edita esta lista (Paramount+ y Hulu quedaron fuera).
-const TOP_ON = ["netflix", "hbo", "disney", "prime", "apple"];
-const MAX_ROWS = 20;
-
 async function build() {
   // Si fallan los ids de plataforma, igual se muestra la fila de tendencias.
   DEBUG.length = 0;
@@ -386,42 +379,50 @@ async function build() {
     kino.log("top-streaming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  let firstError = null;
-  const soft = (job) =>
-    job.catch((e) => {
-      if (!firstError) firstError = e;
-      kino.log("top-streaming: una fila falló", (e && e.code) || "error");
-      dbg("fila", e);
-      return null;
-    });
-  // Primero se lanzan las filas que piden una sola vez a TMDB y al final las que consultan título por título
-  // (esas ya guardan su resultado un día), para no pasarse del límite de peticiones.
-  const netflixNew = soft(netflixNewRow());
-  const newOn = PLATFORMS.filter((p) => NEW_ON.includes(p.id) && ids[p.id]).map((p) => soft(newRows(p, ids[p.id])));
-  const tops = [];
+  const jobs = [trendingRows(), estrenosRow(), netflixNewRow(), kdramaRow()];
   for (const p of PLATFORMS) {
-    if (!TOP_ON.includes(p.id) || !ids[p.id]) continue; // esa plataforma no existe en este país
-    tops.push(soft(platformRow(p, "movie", ids[p.id])));
-    tops.push(soft(platformRow(p, "tv", ids[p.id])));
+    if (!ids[p.id]) continue; // esa plataforma no existe en este país
+    jobs.push(platformRow(p, "movie", ids[p.id]));
+    jobs.push(platformRow(p, "tv", ids[p.id]));
   }
-  const trending = soft(trendingRows());
-  const cines = soft(estrenosRow());
-  const kdramas = soft(kdramaRow());
-  const done = await Promise.all([trending, cines, netflixNew, kdramas, Promise.all(newOn), Promise.all(tops)]);
-  // Orden del Inicio: tendencias, estrenos en cines, nuevo en Netflix, K-dramas, estrenos de las otras plataformas, Tops.
-  const ordered = [done[0], done[1], done[2], done[3]].concat(done[4], done[5]);
-  const good = []
-    .concat(...ordered.map((r) => (Array.isArray(r) ? r : [r])))
-    .filter((r) => r && r.items && r.items.length);
+  let firstError = null;
+  const rows = await Promise.all(
+    jobs.map((job) =>
+      job.catch((e) => {
+        if (!firstError) firstError = e;
+        kino.log("top-streaming: una fila falló", (e && e.code) || "error");
+        dbg("fila", e);
+        return null;
+      })
+    )
+  );
+  // Estrenos de HBO, Prime Video, Disney y Apple TV: se piden después de lo principal y con límite de tiempo.
+  // Si tardan o fallan, se omiten y el resto del Inicio carga igual.
+  const timeout = (ms) =>
+    typeof setTimeout === "function"
+      ? new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms))
+      : new Promise(() => {});
+  const more = await Promise.all(
+    PLATFORMS.filter((p) => NEW_ON.includes(p.id) && ids[p.id]).map((p) =>
+      Promise.race([newRows(p, ids[p.id]), timeout(10000)]).catch((e) => {
+        kino.log("top-streaming: estrenos falló", p.id, (e && e.code) || "error");
+        dbg("estrenos " + p.id, e);
+        return null;
+      })
+    )
+  );
+  // Orden: tendencias, estrenos, Netflix nuevo, K-dramas, estrenos de las otras plataformas y luego los Top de cada una.
+  const ordered = rows.slice(0, 4).concat(more, rows.slice(4));
+  const good = [].concat(...ordered.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
   if (!good.length && firstError) throw firstError;
-  return good.slice(0, MAX_ROWS);
+  return good;
 }
 
 // Kino pide el Home al abrirse. Si pasó menos de un minuto desde la última vez, se devuelve lo guardado;
 // si pasó más, se vuelve a pedir el ranking a TMDB. Si algo falla, se muestra la última copia buena.
 export async function home() {
   await null;
-  const scope = "v3:" + region() + ":" + kino.lang;
+  const scope = "v2:" + region() + ":" + kino.lang;
   const lastKey = "last:" + region() + ":" + kino.lang; // misma clave de antes: sirve de respaldo
   const cached = await readJSON("home:" + scope);
   if (cached) return cached;
