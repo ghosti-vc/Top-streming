@@ -409,7 +409,7 @@ async function build() {
 // si pasó más, se vuelve a pedir el ranking a TMDB. Si algo falla, se muestra la última copia buena.
 export async function home() {
   await null;
-  const scope = region() + ":" + kino.lang;
+  const scope = "v2:" + region() + ":" + kino.lang;
   const cached = await readJSON("home:" + scope);
   if (cached) return cached;
   try {
