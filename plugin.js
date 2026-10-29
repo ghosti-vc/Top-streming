@@ -380,10 +380,6 @@ async function build() {
     return {};
   });
   const jobs = [trendingRows(), estrenosRow(), netflixNewRow(), kdramaRow()];
-  // Estrenos de HBO, Prime Video, Disney y Apple TV.
-  for (const p of PLATFORMS) {
-    if (NEW_ON.includes(p.id) && ids[p.id]) jobs.push(newRows(p, ids[p.id]));
-  }
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
@@ -400,7 +396,24 @@ async function build() {
       })
     )
   );
-  const good = [].concat(...rows.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
+  // Estrenos de HBO, Prime Video, Disney y Apple TV: se piden después de lo principal y con límite de tiempo.
+  // Si tardan o fallan, se omiten y el resto del Inicio carga igual.
+  const timeout = (ms) =>
+    typeof setTimeout === "function"
+      ? new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms))
+      : new Promise(() => {});
+  const more = await Promise.all(
+    PLATFORMS.filter((p) => NEW_ON.includes(p.id) && ids[p.id]).map((p) =>
+      Promise.race([newRows(p, ids[p.id]), timeout(10000)]).catch((e) => {
+        kino.log("top-streaming: estrenos falló", p.id, (e && e.code) || "error");
+        dbg("estrenos " + p.id, e);
+        return null;
+      })
+    )
+  );
+  // Orden: tendencias, estrenos, Netflix nuevo, K-dramas, estrenos de las otras plataformas y luego los Top de cada una.
+  const ordered = rows.slice(0, 4).concat(more, rows.slice(4));
+  const good = [].concat(...ordered.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
   if (!good.length && firstError) throw firstError;
   return good;
 }
@@ -410,6 +423,7 @@ async function build() {
 export async function home() {
   await null;
   const scope = "v2:" + region() + ":" + kino.lang;
+  const lastKey = "last:" + region() + ":" + kino.lang; // misma clave de antes: sirve de respaldo
   const cached = await readJSON("home:" + scope);
   if (cached) return cached;
   try {
@@ -417,12 +431,12 @@ export async function home() {
     if (!rows.length) throw kino.error("unavailable", "TMDB no devolvió títulos");
     const text = JSON.stringify(rows);
     kino.storage.set("home:" + scope, text, { ttlMs: CACHE_MS });
-    kino.storage.set("last:" + scope, text);
+    kino.storage.set(lastKey, text);
     return rows;
   } catch (e) {
     if (e && e.code === "no_tmdb_key") return [];
     kino.log("top-streaming: home falló", (e && e.code) || String(e));
-    const last = await readJSON("last:" + scope);
+    const last = await readJSON(lastKey);
     if (last) return last;
     throw e;
   }
