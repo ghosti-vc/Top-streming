@@ -287,41 +287,6 @@ async function netflixNewRow() {
   return rows;
 }
 
-// Estrenos (últimos 60 días) de HBO, Prime Video, Disney y Apple TV: dos filas por plataforma (películas y series).
-const NEW_ON = ["hbo", "prime", "disney", "apple"];
-async function newRows(p, ids) {
-  const language = tmdbLang();
-  const day = 24 * 60 * 60 * 1000;
-  const today = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - 60 * day).toISOString().slice(0, 10);
-  const base = {
-    watch_region: region(),
-    with_watch_providers: ids.join("|"),
-    with_watch_monetization_types: "flatrate",
-    sort_by: "popularity.desc",
-    include_adult: "false",
-    language,
-    page: "1",
-  };
-  const [movies, shows] = await Promise.all([
-    tmdb("/discover/movie", Object.assign({}, base, { "primary_release_date.gte": from, "primary_release_date.lte": today })).catch(() => null),
-    tmdb("/discover/tv", Object.assign({}, base, { "first_air_date.gte": from, "first_air_date.lte": today })).catch(() => null),
-  ]);
-  const label = (english() ? "Streaming on: " : "Disponible en: ") + p.name;
-  const make = (list, type, id, title) => {
-    const sorted = (list || []).slice().sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    const items = toItems(sorted, () => type);
-    for (const it of items) it.overview = label + (it.overview ? "\n\n" + it.overview : "");
-    return { id, title, items };
-  };
-  const rows = [
-    make(movies && movies.results, "movie", p.id + "-estrenos-movie", english() ? "New on " + p.name + " · Movies" : "Estrenos en " + p.name + " · Películas"),
-    make(shows && shows.results, "tv", p.id + "-estrenos-tv", english() ? "New on " + p.name + " · Series" : "Estrenos en " + p.name + " · Series"),
-  ].filter((r) => r.items.length);
-  if (!rows.length) throw kino.error("unavailable", "no hay estrenos de " + p.name);
-  return rows;
-}
-
 async function platformRow(p, type, ids) {
   const r = await tmdb("/discover/" + type, {
     watch_region: region(),
@@ -396,24 +361,7 @@ async function build() {
       })
     )
   );
-  // Estrenos de HBO, Prime Video, Disney y Apple TV: se piden después de lo principal y con límite de tiempo.
-  // Si tardan o fallan, se omiten y el resto del Inicio carga igual.
-  const timeout = (ms) =>
-    typeof setTimeout === "function"
-      ? new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo agotado")), ms))
-      : new Promise(() => {});
-  const more = await Promise.all(
-    PLATFORMS.filter((p) => NEW_ON.includes(p.id) && ids[p.id]).map((p) =>
-      Promise.race([newRows(p, ids[p.id]), timeout(10000)]).catch((e) => {
-        kino.log("top-streaming: estrenos falló", p.id, (e && e.code) || "error");
-        dbg("estrenos " + p.id, e);
-        return null;
-      })
-    )
-  );
-  // Orden: tendencias, estrenos, Netflix nuevo, K-dramas, estrenos de las otras plataformas y luego los Top de cada una.
-  const ordered = rows.slice(0, 4).concat(more, rows.slice(4));
-  const good = [].concat(...ordered.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
+  const good = [].concat(...rows.map((r) => (Array.isArray(r) ? r : [r]))).filter((r) => r && r.items && r.items.length);
   if (!good.length && firstError) throw firstError;
   return good;
 }
@@ -422,8 +370,7 @@ async function build() {
 // si pasó más, se vuelve a pedir el ranking a TMDB. Si algo falla, se muestra la última copia buena.
 export async function home() {
   await null;
-  const scope = "v2:" + region() + ":" + kino.lang;
-  const lastKey = "last:" + region() + ":" + kino.lang; // misma clave de antes: sirve de respaldo
+  const scope = region() + ":" + kino.lang;
   const cached = await readJSON("home:" + scope);
   if (cached) return cached;
   try {
@@ -431,12 +378,12 @@ export async function home() {
     if (!rows.length) throw kino.error("unavailable", "TMDB no devolvió títulos");
     const text = JSON.stringify(rows);
     kino.storage.set("home:" + scope, text, { ttlMs: CACHE_MS });
-    kino.storage.set(lastKey, text);
+    kino.storage.set("last:" + scope, text);
     return rows;
   } catch (e) {
     if (e && e.code === "no_tmdb_key") return [];
     kino.log("top-streaming: home falló", (e && e.code) || String(e));
-    const last = await readJSON(lastKey);
+    const last = await readJSON("last:" + scope);
     if (last) return last;
     throw e;
   }
