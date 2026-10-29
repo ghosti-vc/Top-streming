@@ -180,11 +180,17 @@ async function tagRow(row) {
 async function kdramaRow() {
   const language = tmdbLang();
   let results = [];
+  // Solo K-dramas que están en las plataformas de tu país (suelen traer doblaje latino).
+  const ids = await providerIds().catch(() => ({}));
+  const all = [].concat(...Object.values(ids));
   try {
     const r = await tmdb("/discover/tv", {
       with_original_language: "ko",
       with_origin_country: "KR",
       with_genres: "18",
+      ...(all.length
+        ? { watch_region: region(), with_watch_providers: all.join("|"), with_watch_monetization_types: "flatrate" }
+        : {}),
       sort_by: "popularity.desc",
       include_adult: "false",
       language,
@@ -210,49 +216,6 @@ async function kdramaRow() {
     items: toItems(results, () => "tv"),
   };
   if (!row.items.length) throw kino.error("unavailable", "no hay K-dramas");
-  return tagRow(row);
-}
-
-// K-dramas de estreno: series surcoreanas que empezaron en los últimos 90 días.
-async function kdramaNewRow() {
-  const language = tmdbLang();
-  const day = 24 * 60 * 60 * 1000;
-  const today = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - 90 * day).toISOString().slice(0, 10);
-  let results = [];
-  try {
-    const r = await tmdb("/discover/tv", {
-      with_original_language: "ko",
-      with_origin_country: "KR",
-      with_genres: "18",
-      "first_air_date.gte": from,
-      "first_air_date.lte": today,
-      sort_by: "popularity.desc",
-      include_adult: "false",
-      language,
-      page: "1",
-    });
-    results = r.results || [];
-  } catch (e) {
-    kino.log("top-streaming: discover de K-dramas nuevos falló", (e && e.code) || "error");
-  }
-  if (!results.length) {
-    const pages = await Promise.all(
-      ["1", "2", "3", "4", "5"].map((page) => tmdb("/trending/all/day", { language, page }).catch(() => null))
-    );
-    for (const r of pages) {
-      for (const m of (r && r.results) || []) {
-        if (m.media_type === "tv" && m.original_language === "ko" && (m.first_air_date || "") >= from) results.push(m);
-      }
-    }
-  }
-  results.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-  const row = {
-    id: "kdramas-estreno",
-    title: english() ? "New K-dramas" : "K-dramas de estreno",
-    items: toItems(results, () => "tv"),
-  };
-  if (!row.items.length) throw kino.error("unavailable", "no hay K-dramas de estreno");
   return tagRow(row);
 }
 
@@ -381,7 +344,7 @@ async function build() {
     kino.log("top-streaming: providerIds falló", (e && e.code) || String(e));
     return {};
   });
-  const jobs = [trendingRows(), estrenosRow(), netflixNewRow(), kdramaRow(), kdramaNewRow()];
+  const jobs = [trendingRows(), estrenosRow(), netflixNewRow(), kdramaRow()];
   for (const p of PLATFORMS) {
     if (!ids[p.id]) continue; // esa plataforma no existe en este país
     jobs.push(platformRow(p, "movie", ids[p.id]));
