@@ -1,13 +1,13 @@
 {
   "id": "top-streming",
-  "name": "Top Streaming",
-  "version": "1.0.1",
+  "name": "Top Streming",
+  "version": "1.0.0",
   "apiVersion": 1,
   "entry": "plugin.js",
   "description": "Lo más visto de Netflix, HBO Max, Disney+, Prime Video y más: películas y series por país. Solo muestra el catálogo, no reproduce videos.",
   "author": "Ghosti-vc",
   "homepage": "https://github.com/Ghosti-vc/top-streming",
-  "icon": "",
+  "icon": "icon.png",
   "hosts": [
     "api.themoviedb.org",
     "image.tmdb.org"
@@ -23,15 +23,15 @@
       "key": "region",
       "label": "País",
       "type": "select",
-      "default": "MX",
+      "default": "CO",
       "options": [
-        {
-          "value": "MX",
-          "label": "México"
-        },
         {
           "value": "CO",
           "label": "Colombia"
+        },
+        {
+          "value": "MX",
+          "label": "México"
         },
         {
           "value": "AR",
@@ -65,4 +65,3 @@
     }
   ]
 }
- 
