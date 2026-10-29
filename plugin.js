@@ -180,17 +180,11 @@ async function tagRow(row) {
 async function kdramaRow() {
   const language = tmdbLang();
   let results = [];
-  // Solo K-dramas que están en las plataformas de tu país (suelen traer doblaje latino).
-  const ids = await providerIds().catch(() => ({}));
-  const all = [].concat(...Object.values(ids));
   try {
     const r = await tmdb("/discover/tv", {
       with_original_language: "ko",
       with_origin_country: "KR",
       with_genres: "18",
-      ...(all.length
-        ? { watch_region: region(), with_watch_providers: all.join("|"), with_watch_monetization_types: "flatrate" }
-        : {}),
       sort_by: "popularity.desc",
       include_adult: "false",
       language,
@@ -436,4 +430,3 @@ export async function resolve(ref) {
     userMessage: "Este catálogo no reproduce: busca el título en tus otras fuentes.",
   });
 }
- 
