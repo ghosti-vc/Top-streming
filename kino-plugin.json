@@ -1,67 +1,12 @@
 {
-  "id": "top-streming",
-  "name": "Top Streming",
-  "version": "1.0.0",
-  "apiVersion": 1,
+  "id": "top-streaming-2",
+  "name": "Top Streaming 2.0",
+  "version": "0.1.12",
+  "apiVersion": 8,
   "entry": "plugin.js",
-  "description": "Lo más visto de Netflix, HBO Max, Disney+, Prime Video y más: películas y series por país. Solo muestra el catálogo, no reproduce videos.",
-  "author": "Ghosti-vc",
-  "homepage": "https://github.com/Ghosti-vc/top-streming",
-  "icon": "icon.png",
-  "hosts": [
-    "api.themoviedb.org",
-    "image.tmdb.org"
-  ],
-  "capabilities": [
-    "home",
-    "episodes",
-    "resolve"
-  ],
+  "description": "Estrenos y lo más visto de Netflix y Prime Video, más los K-dramas y las series turcas del momento. Solo catálogo.",
+  "hosts": ["image.tmdb.org"],
+  "capabilities": ["home", "episodes", "resolve"],
   "catalogOnly": true,
-  "settings": [
-    {
-      "key": "region",
-      "label": "País",
-      "type": "select",
-      "default": "CO",
-      "options": [
-        {
-          "value": "CO",
-          "label": "Colombia"
-        },
-        {
-          "value": "MX",
-          "label": "México"
-        },
-        {
-          "value": "AR",
-          "label": "Argentina"
-        },
-        {
-          "value": "CL",
-          "label": "Chile"
-        },
-        {
-          "value": "PE",
-          "label": "Perú"
-        },
-        {
-          "value": "EC",
-          "label": "Ecuador"
-        },
-        {
-          "value": "VE",
-          "label": "Venezuela"
-        },
-        {
-          "value": "ES",
-          "label": "España"
-        },
-        {
-          "value": "US",
-          "label": "Estados Unidos"
-        }
-      ]
-    }
-  ]
+  "section": { "label": "Top Streaming" }
 }
