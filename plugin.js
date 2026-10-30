@@ -239,4 +239,4 @@ export async function resolve(ref) {
   throw kino.error("not_found", "solo catalogo", {
     userMessage: "Este catálogo no reproduce: busca el título en tus otras fuentes.",
   });
-}
+} 
